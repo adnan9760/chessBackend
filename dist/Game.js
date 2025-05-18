@@ -36,7 +36,7 @@ class Game {
             },
         }));
     }
-    handleMove(socket, move) {
+    handleMove(socket, move, spectators) {
         return __awaiter(this, void 0, void 0, function* () {
             try {
                 const playercolor = socket === this.Player1 ? "w" : "b";
@@ -63,6 +63,11 @@ class Game {
                 });
                 this.Player1.send(payload);
                 this.Player2.send(payload);
+                const gameSpectators = spectators.get(this.gameid) || [];
+                console.log(gameSpectators);
+                for (const spec of gameSpectators) {
+                    spec.send(payload);
+                }
                 yield radisclient_1.redisPublisher.publish(`game:${this.gameid}`, payload);
                 if (this.Board.isGameOver()) {
                     const gameOverMessage = JSON.stringify({
@@ -71,6 +76,9 @@ class Game {
                     });
                     this.Player1.send(gameOverMessage);
                     this.Player2.send(gameOverMessage);
+                    for (const spec of gameSpectators) {
+                        spec.send(gameOverMessage);
+                    }
                     yield radisclient_1.redisPublisher.publish(`game:${this.gameid}`, gameOverMessage);
                 }
             }

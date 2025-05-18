@@ -38,7 +38,7 @@ export class Game {
         );
     }
 
-    async handleMove(socket: WebSocket, move: { from: string; to: string }) {
+    async handleMove(socket: WebSocket, move: { from: string; to: string },spectators:Map<string, WebSocket[]>) {
         try {
 const playercolor =socket=== this.Player1 ?"w":"b";
              const usermovefrom = move.from;
@@ -65,9 +65,18 @@ const playercolor =socket=== this.Player1 ?"w":"b";
                 type: 'MOVE',
                 payload: result,
             });
-
             this.Player1.send(payload);
             this.Player2.send(payload);
+ const gameSpectators = spectators.get(this.gameid) || [];
+console.log(gameSpectators);
+for (const spec of gameSpectators) {
+  
+    spec.send(payload);
+  
+}
+
+    
+            
             await redisPublisher.publish(`game:${this.gameid}`, payload);
             if (this.Board.isGameOver()) {
                 const gameOverMessage = JSON.stringify({
@@ -76,6 +85,11 @@ const playercolor =socket=== this.Player1 ?"w":"b";
                 });
                 this.Player1.send(gameOverMessage);
                 this.Player2.send(gameOverMessage);
+                for (const spec of gameSpectators) {
+  
+               spec.send(gameOverMessage);
+  
+}
                 await redisPublisher.publish(`game:${this.gameid}`, gameOverMessage);
             }
 
@@ -97,4 +111,6 @@ const playercolor =socket=== this.Player1 ?"w":"b";
           this.Board.move(move);
         }
       }
+  
 }
+

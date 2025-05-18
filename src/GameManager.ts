@@ -8,12 +8,15 @@ export class GameManager {
     public PendingUser: WebSocket | null;
     public Users: Map<string, WebSocket>; 
     public spectators: Map<string, WebSocket[]>;
+public activeGames: Map<string, Game> = new Map();
+
 
 
     constructor() {
         this.games = [];
         this.PendingUser = null;
         this.Users = new Map(); 
+        this.activeGames=new Map();
         this.spectators = new Map();
     }
 
@@ -60,6 +63,8 @@ export class GameManager {
                     this.PendingUser = null;
                     console.log("Game created between players");
                     console.log("gameid",game.gameid);
+                   this.activeGames.set(game.gameid, game); 
+
                 } else {
                     this.PendingUser = socket;
                     console.log("Waiting for an opponent");
@@ -78,23 +83,67 @@ export class GameManager {
                     return;
                 }
 
-                game.handleMove(socket, message.payload);
+                game.handleMove(socket, message.payload,this.spectators);
             }
-            else if(message.type === "SPECTURUM"){
-                 const {gameId} = message.payload;
-                 if(!this.spectators.has(gameId)){
-                    this.spectators.set(gameId,[]);
-                 }
-                 redisSubscriber.subscribe(`game:${gameId}`,(msg)=>{
-                    const spector =this.spectators.get(gameId) ||[];
+           else if (message.type === "SPECTURUM") {
+  const { gameId } = message.payload;
 
-                    spector.forEach(socket=>{
-                        socket.send(msg);
-                    })
-                 })
-                 this.spectators.get(gameId)?.push(socket);
+  if (!this.spectators.has(gameId)) {
+    this.spectators.set(gameId, []);
+  }
 
-                 console.log(`User is now spectating game: ${gameId}`);   
+  this.spectators.get(gameId)?.push(socket);
+
+  console.log(`User is now spectating game: ${gameId}`);
+
+  redisSubscriber.subscribe(`game:${gameId}`, (msg) => {
+    const spectators = this.spectators.get(gameId) || [];
+
+    for (const ws of spectators) {
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send(msg); 
+      }
+    }
+  });
+
+  const game = this.activeGames.get(gameId);
+
+  if (game) {
+    const initMessage = {
+      type: "initial_board_state",
+      board: game.Board.fen(), 
+      moveHistory: game.moveHistory,
+    };
+
+    const spectators = this.spectators.get(gameId);
+    if (spectators) {
+      for (const ws of spectators) {
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify(initMessage)); 
+        }
+      }
+    }
+  } else {
+    console.warn("Game not found for gameId:", gameId);
+  }
+}
+
+            else if(message.type === "GETLIVEGAME"){
+                console.log(this.activeGames);
+                const gamesList = Array.from(this.activeGames.entries()).map(([gameid, game]) => ({
+  gameid,
+  white: game.Player1 || "Waiting",
+  black: game.Player2|| "Waiting",
+  createdAt: game.StartTime,
+}));
+console.log("gamesList", gamesList);
+
+
+
+      socket.send(JSON.stringify({
+        type: "LIVEGAME",
+        payload: gamesList,
+      }))
             }
         });
     }
